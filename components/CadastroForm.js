@@ -1,61 +1,42 @@
 // components/CadastroForm.js
+
 import { useState, useEffect } from 'react';
-import { collection, addDoc, doc, updateDoc } from "firebase/firestore";
+import { collection, addDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from '../firebase/config';
-import { useAuth } from '../context/AuthContext';
 import { CATEGORIAS_PRINCIPAIS } from '../config/appConfig';
 import { 
   Button, FormControl, FormLabel, Input, Select, VStack, Heading, Checkbox, 
-  Link as ChakraLink, Text
+  Modal, ModalOverlay, ModalContent, ModalHeader, ModalFooter, ModalBody, ModalCloseButton,
+  useDisclosure, Link, Text, UnorderedList, ListItem
 } from '@chakra-ui/react';
 import CidadesEstadosData from '../data/estados-cidades.json';
-import { useRouter } from 'next/router';
 
-export default function CadastroForm({ initialData = null, isEditMode = false }) {
-  const { user, fetchUserData } = useAuth();
-  const router = useRouter();
-  const [formData, setFormData] = useState({
-    nome: '', categoria: '', servico: '', telefone: '', email: '', estado: '', cidade: ''
-  });
+function CadastroForm() {
   const [uploading, setUploading] = useState(false);
   const [cidades, setCidades] = useState([]);
-  const [termsAccepted, setTermsAccepted] = useState(isEditMode);
+  const [selectedEstado, setSelectedEstado] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false); // <-- NOVO: Estado para o checkbox de termos
+  const { isOpen, onOpen, onClose } = useDisclosure(); // <-- Hook do Chakra para controlar o modal
 
   useEffect(() => {
-    if (isEditMode && initialData) {
-      setFormData({
-        nome: initialData.nome || '', categoria: initialData.categoria || '', servico: initialData.servico || '',
-        telefone: initialData.telefone || '', email: initialData.email || '', estado: initialData.estado || '',
-        cidade: initialData.cidade || '',
-      });
-      if (initialData.estado) {
-        const estadoEncontrado = CidadesEstadosData.estados.find(e => e.sigla === initialData.estado);
-        if (estadoEncontrado) setCidades(estadoEncontrado.cidades);
-      }
-    } else if (!isEditMode && user) {
-      setFormData(prev => ({ ...prev, email: user.email }));
-    }
-  }, [initialData, isEditMode, user]);
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    if (name === 'estado') {
-      const estadoEncontrado = CidadesEstadosData.estados.find(est => est.sigla === value);
+    if (selectedEstado) {
+      const estadoEncontrado = CidadesEstadosData.estados.find(estado => estado.sigla === selectedEstado);
       setCidades(estadoEncontrado ? estadoEncontrado.cidades : []);
+    } else {
+      setCidades([]);
     }
-  };
+  }, [selectedEstado]);
 
   const handleSubmit = async (event) => {
-    event.preventDefault();
-    if (!user) { alert("Você precisa estar logado."); return; }
-    if (!termsAccepted) { alert("Você precisa aceitar os Termos de Uso."); return; }
-    
+    event.preventDefault(); 
+    if (!termsAccepted) {
+      alert("Você precisa aceitar os Termos de Uso para se cadastrar.");
+      return;
+    }
     setUploading(true);
-    const fileInput = event.target.logo;
-    let logoUrl = initialData?.logoUrl || null;
-
+    const form = event.target; const fileInput = form.logo;
+    let logoUrl = null;
     try {
       if (fileInput.files[0]) {
         const file = fileInput.files[0];
@@ -63,49 +44,94 @@ export default function CadastroForm({ initialData = null, isEditMode = false })
         await uploadBytes(storageRef, file);
         logoUrl = await getDownloadURL(storageRef);
       }
-      
-      const dataToSave = { ...formData, logoUrl };
-
-      if (isEditMode) {
-        const docRef = doc(db, "servicos", initialData.id);
-        await updateDoc(docRef, dataToSave);
-        alert("Anúncio atualizado com sucesso!");
-        router.push('/consulta');
-      } else {
-        await addDoc(collection(db, "servicos"), { ...dataToSave, userId: user.uid, dataCadastro: new Date() });
-        alert("Serviço cadastrado com sucesso!");
-        await fetchUserData(user);
-        router.push('/consulta');
-      }
-    } catch (e) {
-      console.error("Erro:", e);
-      alert("Ocorreu um erro ao salvar.");
-    } finally {
-      setUploading(false);
-    }
+      await addDoc(collection(db, "servicos"), {
+        nome: form.nome.value, categoria: form.categoria.value, servico: form.servico.value,
+        telefone: form.telefone.value, email: form.email.value, 
+        estado: form.estado.value,
+        cidade: form.cidade.value,
+        logoUrl: logoUrl, dataCadastro: new Date()
+      });
+      alert("Serviço cadastrado com sucesso!");
+      form.reset();
+      setSelectedEstado("");
+      setTermsAccepted(false);
+    } catch (e) { console.error("Erro no cadastro: ", e); alert("Ocorreu um erro ao cadastrar.");
+    } finally { setUploading(false); }
   };
 
   return (
-    <VStack as="form" onSubmit={handleSubmit} spacing={4}>
-      <Heading as="h3" size="lg">{isEditMode ? "Editar Anúncio" : "Cadastre seu Serviço"}</Heading>
-      <FormControl isRequired><FormLabel>Nome ou Razão Social:</FormLabel><Input name="nome" value={formData.nome} onChange={handleInputChange} /></FormControl>
-      <FormControl isRequired><FormLabel>Categoria do Estabelecimento ou Serviço:</FormLabel><Select name="categoria" value={formData.categoria} onChange={handleInputChange} placeholder="-- Selecione --">{CATEGORIAS_PRINCIPAIS.map(cat => (<option key={cat} value={cat} style={{ color: "black" }}>{cat}</option>))}</Select></FormControl>
-      <FormControl isRequired><FormLabel>Serviço Específico:</FormLabel><Input name="servico" value={formData.servico} onChange={handleInputChange} placeholder="Ex: Eletricista Residencial" /></FormControl>
-      <FormControl isRequired><FormLabel>Estado:</FormLabel><Select name="estado" value={formData.estado} onChange={handleInputChange} placeholder="-- Selecione um estado --">{CidadesEstadosData.estados.map(est => (<option key={est.sigla} value={est.sigla} style={{ color: "black" }}>{est.nome}</option>))}</Select></FormControl>
-      <FormControl isRequired><FormLabel>Cidade:</FormLabel><Select name="cidade" value={formData.cidade} onChange={handleInputChange} placeholder={formData.estado ? "Selecione uma cidade" : "-- Escolha um estado --"} isDisabled={cidades.length === 0}>{cidades.map(cid => (<option key={cid} value={cid} style={{ color: "black" }}>{cid}</option>))}</Select></FormControl>
-      <FormControl isRequired><FormLabel>Telefone / WhatsApp:</FormLabel><Input name="telefone" value={formData.telefone} onChange={handleInputChange} type="tel" /></FormControl>
-      <FormControl isRequired><FormLabel>E-mail de Contato:</FormLabel><Input name="email" value={formData.email} onChange={handleInputChange} type="email" isReadOnly={!isEditMode && !!user.email} bg={!isEditMode && !!user.email ? "gray.600" : "white"} color={!isEditMode && !!user.email ? "white" : "gray.800"} /></FormControl>
-      <FormControl><FormLabel>Logotipo ou sua Foto (opcional):</FormLabel><Input name="logo" type="file" accept="image/*" p={1.5} sx={{"::file-selector-button": { mr: 4, color: "black", bg: "brand.400", border: "none", borderRadius: "md" }}} /></FormControl>
-      
-      {!isEditMode && (
-        <FormControl>
-          <Checkbox isChecked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)}>Li e aceito os Termos de Uso.</Checkbox>
-        </FormControl>
-      )}
+    <>
+      <VStack as="form" onSubmit={handleSubmit} spacing={4}>
+          <Heading as="h3" size="lg">Cadastre seu Serviço na Comunidade</Heading>
+          <FormControl isRequired><FormLabel>Nome ou Razão Social:</FormLabel><Input id="nome" name="nome" /></FormControl>
+          <FormControl isRequired><FormLabel>Categoria do Estabelecimento ou Serviço:</FormLabel><Select id="categoria" name="categoria" placeholder="-- Selecione --">{CATEGORIAS_PRINCIPAIS.map(cat => (<option key={cat} value={cat} style={{ color: "black" }}>{cat}</option>))}</Select></FormControl>
+          <FormControl isRequired><FormLabel>Serviço Específico:</FormLabel><Input id="servico" name="servico" placeholder="Ex: Eletricista Residencial" /></FormControl>
+          <FormControl isRequired>
+            <FormLabel>Estado:</FormLabel>
+            <Select id="estado" name="estado" placeholder="-- Selecione um estado --" onChange={(e) => setSelectedEstado(e.target.value)} value={selectedEstado}>
+              {CidadesEstadosData.estados.map(estado => (<option key={estado.sigla} value={estado.sigla} style={{ color: "black" }}>{estado.nome}</option>))}
+            </Select>
+          </FormControl>
+          <FormControl isRequired>
+            <FormLabel>Cidade:</FormLabel>
+            <Select id="cidade" name="cidade" placeholder={selectedEstado ? "Selecione uma cidade" : "-- Primeiro escolha um estado --"} isDisabled={cidades.length === 0}>
+              {cidades.map(cidade => (<option key={cidade} value={cidade} style={{ color: "black" }}>{cidade}</option>))}
+            </Select>
+          </FormControl>
+          <FormControl isRequired><FormLabel>Telefone / WhatsApp:</FormLabel><Input id="telefone" name="telefone" type="tel" /></FormControl>
+          <FormControl><FormLabel>E-mail (opcional):</FormLabel><Input id="email" name="email" type="email" /></FormControl>
+          <FormControl><FormLabel>Logotipo ou sua Foto:</FormLabel><Input id="logo" name="logo" type="file" accept="image/*" p={1.5} sx={{"::file-selector-button": { mr: 4, color: "black", bg: "brand.400", border: "none", borderRadius: "md" }}} /></FormControl>
+          
+          {/* NOVO CHECKBOX DE TERMOS */}
+          <FormControl>
+            <Checkbox isChecked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)}>
+              Li e aceito os{" "}
+              <Link color="brand.400" onClick={onOpen} _hover={{ textDecoration: "underline" }}>
+                Termos de Uso e Privacidade de Dados
+              </Link>
+              .
+            </Checkbox>
+          </FormControl>
 
-      <Button type="submit" colorScheme="brand" size="lg" width="full" isLoading={uploading} loadingText="Salvando..." color="gray.900" isDisabled={!termsAccepted || uploading}>
-        {isEditMode ? "Atualizar Cadastro" : "Salvar Cadastro"}
-      </Button>
-    </VStack>
+          {/* O botão agora é desabilitado se os termos não forem aceitos */}
+          <Button type="submit" colorScheme="brand" size="lg" width="full" isLoading={uploading} loadingText="Enviando..." color="gray.900" isDisabled={!termsAccepted || uploading}>Salvar Cadastro</Button>
+      </VStack>
+
+      {/* NOVO MODAL (POP-UP) COM OS TERMOS */}
+      <Modal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent bg="gray.800">
+          <ModalHeader>Termos de Uso e Política de Privacidade</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack align="start" spacing={4}>
+              <Text>Ao se cadastrar no SERVIAPP, você entende e concorda com os seguintes pontos:</Text>
+              <UnorderedList spacing={3}>
+                <ListItem>
+                  <strong>Propósito da Ferramenta:</strong> O SERVIAPP é um guia de contatos criado com o único propósito de facilitar a conexão e a ajuda mútua entre os membros da nossa comunidade cristã.
+                </ListItem>
+                <ListItem>
+                  <strong>Publicidade dos Dados:</strong> As informações que você cadastra (Nome/Razão Social, Serviço, Categoria, Contatos, etc.) ficarão visíveis para os outros membros da comunidade que acessarem o aplicativo.
+                </ListItem>
+                <ListItem>
+                  <strong>Sua Responsabilidade:</strong> Você é inteiramente responsável pela veracidade, exatidão e legalidade das informações que publica. Garanta que você tem o direito de compartilhar todos os dados e imagens fornecidas.
+                </ListItem>
+                <ListItem>
+                  <strong>Isenção de Responsabilidade:</strong> O SERVIAPP e seus administradores atuam apenas como uma plataforma para exibir os contatos. Não nos responsabilizamos pela qualidade dos serviços prestados, pelas negociações entre as partes, nem pela veracidade das informações cadastradas por terceiros. A responsabilidade por qualquer transação ou serviço contratado é exclusivamente das partes envolvidas.
+                </ListItem>
+              </UnorderedList>
+              <Text pt={4}>Ao marcar a caixa de aceite, você confirma que leu, compreendeu e concorda com todos os termos acima.</Text>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button colorScheme="brand" color="gray.900" onClick={onClose}>
+              Entendi
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </>
   );
 }
+
+export default CadastroForm;

@@ -3,20 +3,28 @@
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config'; // <-- IMPORTE 'auth'
+import { onAuthStateChanged, signOut } from "firebase/auth"; // <-- IMPORTE FUNÇÕES DE AUTH
+import { useRouter } from 'next/router'; // <-- IMPORTE 'useRouter'
 import { CATEGORIAS_PRINCIPAIS } from '../config/appConfig';
 import CadastroForm from '../components/CadastroForm';
 import ServicoCard from '../components/ServicoCard';
-import { Container, Heading, VStack, Box, Text, Flex, Input, Select, SimpleGrid, Divider, Image, Button, Checkbox, Spacer } from '@chakra-ui/react';
+import { Container, Heading, VStack, Box, Text, Flex, Input, Select, SimpleGrid, Divider, Image, Button, Checkbox, Spacer, useToast } from '@chakra-ui/react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 
-const Header = () => (
+// MODIFIQUE O HEADER PARA INCLUIR O BOTÃO DE SAIR
+const Header = ({ onLogout }) => (
     <Box as="header" bg="gray.900" color="white" py={2} boxShadow="md">
       <Container maxW="container.xl">
-        <Flex align="center" justify="center">
-          <Image src="/logo.png" alt="Logo SERVIAPP" boxSize="60px" objectFit="contain" mr={4} />
-          <Heading as="h1" size="lg">SERVIAPP</Heading>
+        <Flex align="center" justify="space-between"> {/* Mudado para space-between */}
+          <Flex align="center">
+            <Image src="/logo.png" alt="Logo SERVIAPP" boxSize="60px" objectFit="contain" mr={4} />
+            <Heading as="h1" size="lg">SERVIAPP</Heading>
+          </Flex>
+          <Button colorScheme="brand" variant="outline" onClick={onLogout}>
+            Sair
+          </Button>
         </Flex>
       </Container>
     </Box>
@@ -32,21 +40,52 @@ const Footer = () => (
 );
 
 export default function HomePage() {
+  const [user, setUser] = useState(null); // <-- ESTADO PARA O USUÁRIO
+  const [loading, setLoading] = useState(true); // <-- ESTADO DE CARREGAMENTO
+  const router = useRouter(); // <-- HOOK DE ROTEAMENTO
+  const toast = useToast(); // <-- HOOK PARA NOTIFICAÇÕES
+
   const [listaDeServicos, setListaDeServicos] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [termoBusca, setTermoBusca] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState('');
 
+  // EFEITO PARA VERIFICAR O ESTADO DE AUTENTICAÇÃO
   useEffect(() => {
-    const fetchServicos = async () => {
-      const servicosCollection = collection(db, "servicos");
-      const q = query(servicosCollection, orderBy("dataCadastro", "desc"));
-      const querySnapshot = await getDocs(q);
-      const servicos = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setListaDeServicos(servicos);
-    };
-    fetchServicos();
-  }, []);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+      } else {
+        router.push('/login'); // Redireciona se não estiver logado
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+
+  useEffect(() => {
+    if(user) { // Só busca os serviços se o usuário estiver logado
+        const fetchServicos = async () => {
+          const servicosCollection = collection(db, "servicos");
+          const q = query(servicosCollection, orderBy("dataCadastro", "desc"));
+          const querySnapshot = await getDocs(q);
+          const servicos = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setListaDeServicos(servicos);
+        };
+        fetchServicos();
+    }
+  }, [user]); // Adicionado 'user' como dependência
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      toast({ title: "Você saiu.", status: "info", duration: 3000, isClosable: true });
+      router.push('/login');
+    } catch (error) {
+      toast({ title: "Erro ao sair.", description: error.message, status: "error", duration: 5000, isClosable: true });
+    }
+  };
 
   const servicosFiltrados = listaDeServicos.filter(prestador => {
     const busca = termoBusca.toLowerCase().trim();
@@ -92,12 +131,21 @@ export default function HomePage() {
   
   const areAllSelected = servicosFiltrados.length > 0 && selectedIds.length === servicosFiltrados.length;
 
+  // EXIBE UMA MENSAGEM DE CARREGAMENTO OU NADA ENQUANTO VERIFICA O LOGIN
+  if (loading || !user) {
+    return (
+        <Flex minH="100vh" align="center" justify="center" bg="gray.900">
+            <Text color="white">Carregando...</Text>
+        </Flex>
+    );
+  }
+
   return (
     <Box bg="gray.900" color="whiteAlpha.900">
       <Head>
         <title>SERVIAPP - Guia de Prestadores de Serviço Cristão</title>
       </Head>
-      <Header />
+      <Header onLogout={handleLogout} /> {/* Passa a função de logout para o Header */}
       <Container as="main" maxW="container.xl" py={10}>
         <VStack spacing={12}>
           <Box w="100%" maxW="container.md" p={8} borderWidth={1} borderRadius="lg" boxShadow="lg" bg="gray.800" borderColor="gray.700" id="cadastro">
@@ -107,7 +155,6 @@ export default function HomePage() {
           <VStack w="100%" spacing={8} id="lista-servicos" align="stretch">
             <Heading as="h2" size="xl" textAlign="center">Encontre um Profissional na Comunidade</Heading>
             <Flex direction={{ base: 'column', md: 'row' }} gap={4}>
-              {/* CORREÇÃO: Adicionado bg="white" e color="gray.800" */}
               <Input placeholder="Buscar por nome ou serviço..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} focusBorderColor="brand.500" bg="white" color="gray.800" />
               <Select placeholder="Clique para escolher a categoria" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} focusBorderColor="brand.500" bg="white" color="gray.800">
                 <option value="" style={{ color: "black" }}>Todas as Categorias</option>

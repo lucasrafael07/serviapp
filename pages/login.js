@@ -6,7 +6,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "fire
 import { auth } from '../firebase/config';
 import {
   Box, Button, Container, FormControl, FormLabel, Input, VStack, Heading,
-  useToast, Flex, Tab, TabList, TabPanel, TabPanels, Tabs
+  useToast, Flex, Tab, TabList, TabPanel, TabPanels, Tabs, Image
 } from '@chakra-ui/react';
 
 export default function LoginPage() {
@@ -30,7 +30,7 @@ export default function LoginPage() {
     } catch (error) {
       toast({
         title: "Erro na autenticação.",
-        description: error.message,
+        description: "Verifique seu e-mail e senha.",
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -40,21 +40,26 @@ export default function LoginPage() {
     }
   };
 
+  const handleFormSubmit = (e, isLogin) => {
+    e.preventDefault();
+    handleAuth(isLogin);
+  };
+
   return (
     <Flex minH="100vh" align="center" justify="center" bg="gray.900">
       <Container maxW="md">
         <Box p={8} borderWidth={1} borderRadius="lg" boxShadow="lg" bg="gray.800" borderColor="gray.700">
-          <VStack spacing={4}>
+          <VStack spacing={4} align="center">
+            <Image src="/logo.png" alt="Logo SERVIAPP" boxSize="80px" objectFit="contain" />
             <Heading color="whiteAlpha.900">SERVIAPP</Heading>
-            <Tabs isFitted variant="enclosed" w="100%">
+            <Tabs isFitted variant="enclosed" w="100%" colorScheme="brand">
               <TabList mb="1em">
-                <Tab _selected={{ color: 'white', bg: 'brand.500' }}>Login</Tab>
-                <Tab _selected={{ color: 'white', bg: 'brand.500' }}>Registrar</Tab>
+                <Tab _selected={{ color: 'gray.900', bg: 'brand.400' }}>Login</Tab>
+                <Tab _selected={{ color: 'gray.900', bg: 'brand.400' }}>Registrar</Tab>
               </TabList>
               <TabPanels>
-                {/* Painel de Login */}
                 <TabPanel>
-                  <VStack as="form" spacing={4} onSubmit={(e) => { e.preventDefault(); handleAuth(true); }}>
+                  <VStack as="form" spacing={4} onSubmit={(e) => handleFormSubmit(e, true)}>
                     <FormControl isRequired>
                       <FormLabel color="whiteAlpha.900">E-mail</FormLabel>
                       <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} bg="white" color="gray.800" />
@@ -68,9 +73,8 @@ export default function LoginPage() {
                     </Button>
                   </VStack>
                 </TabPanel>
-                {/* Painel de Registro */}
                 <TabPanel>
-                  <VStack as="form" spacing={4} onSubmit={(e) => { e.preventDefault(); handleAuth(false); }}>
+                  <VStack as="form" spacing={4} onSubmit={(e) => handleFormSubmit(e, false)}>
                     <FormControl isRequired>
                       <FormLabel color="whiteAlpha.900">E-mail</FormLabel>
                       <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} bg="white" color="gray.800" />

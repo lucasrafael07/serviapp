@@ -14,7 +14,6 @@ function EditModal({ isOpen, onClose, servico, onUpdate }) {
   const toast = useToast();
 
   useEffect(() => {
-    // Quando o serviço a ser editado muda, atualiza o estado do formulário
     if (servico) {
       setFormData({
         nome: servico.nome || '',
@@ -36,21 +35,24 @@ function EditModal({ isOpen, onClose, servico, onUpdate }) {
     try {
       const servicoRef = doc(db, 'servicos', servico.id);
       await updateDoc(servicoRef, {
-        ...formData // Salva os campos atualizados
+        nome: formData.nome,
+        servico: formData.servico,
+        telefone: formData.telefone,
+        email: formData.email,
       });
-      onUpdate({ ...servico, ...formData }); // Atualiza o estado na página principal
-      toast({ title: "Serviço atualizado!", status: "success", duration: 3000 });
+      onUpdate({ ...servico, ...formData });
+      toast({ title: "Serviço atualizado!", status: "success", duration: 3000, isClosable: true });
       onClose();
     } catch (error) {
       console.error("Erro ao atualizar:", error);
-      toast({ title: "Erro ao atualizar.", description: error.message, status: "error" });
+      toast({ title: "Erro ao atualizar.", description: error.message, status: "error", isClosable: true });
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
+    <Modal isOpen={isOpen} onClose={onClose} isCentered>
       <ModalOverlay />
       <ModalContent bg="gray.800" color="white">
         <ModalHeader>Editar Serviço</ModalHeader>
@@ -78,7 +80,7 @@ function EditModal({ isOpen, onClose, servico, onUpdate }) {
         <ModalFooter>
           <Button variant="ghost" mr={3} onClick={onClose}>Cancelar</Button>
           <Button colorScheme="brand" color="gray.900" onClick={handleSave} isLoading={isSaving}>
-            Salvar
+            Salvar Alterações
           </Button>
         </ModalFooter>
       </ModalContent>
